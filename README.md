@@ -44,6 +44,8 @@ The vault drawer can copy keys and export them as JSON or CSV.
 | Chrome, Edge, other Chromium | Uses the File System Access API. You pick a base folder once, and the script writes `<Bundle>/<type>/<file>` directly into it. |
 | Firefox, Safari | No folder API. The script builds a `.zip` that keeps the same `<Bundle>/<type>/<file>` structure. |
 
+**macOS: create a subfolder first.** The browser will not let you pick `Downloads` or `Documents` as the base folder. Create a new folder (for example `~/Downloads/humble` or `~/Documents/humble`) in Finder, then choose that folder when the picker opens. Bundle folders are created inside it.
+
 Download history is tracked per bundle, so the toolbar can show `N / M Downloaded`.
 
 ## Privacy and permissions
@@ -61,6 +63,7 @@ Download history is tracked per bundle, so the toolbar can show `N / M Downloade
 | No toolbar | Confirm the script is enabled and you are on a `humblebundle.com` page; reload. |
 | Items missing or wrong | Click **Rescan Page**. Humble changes its markup, so selectors may need updates. |
 | "Could not resolve download URL" | Click the item's own download button once on the page, then **Rescan Page** and retry. |
+| Picker rejects the folder (macOS) | You chose `Downloads` or `Documents` itself. Make a subfolder inside it and pick that. |
 | Nothing saved after picking a folder | Re-pick the base folder; the browser may have revoked write permission. |
 | Large downloads fail | Files are fetched into memory as blobs before writing; very large files need enough RAM. |
 
