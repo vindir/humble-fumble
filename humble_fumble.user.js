@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.9.0
+// @version      5.10.0
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -947,9 +947,19 @@
     let pageLock = Promise.resolve();
     const withPageLock = (fn) => { const r = pageLock.then(fn); pageLock = r.catch(() => {}); return r; };
     let next = 0, finished = 0;
+    const failedNotes = [];
+    // One summary line, redrawn at most every 250 ms, instead of every worker overwriting it with its own file's progress.
+    let active = 0, retried = 0, bytesSaved = 0, drawTimer = null;
+    const drawStatus = () => {
+      drawTimer = null;
+      setStatusMessage('Downloading ' + finished + '/' + queue.length + ' \u00b7 ' + active + ' active \u00b7 ' + (bytesSaved / 1048576).toFixed(1) + ' MB saved' + (retried ? ' \u00b7 ' + retried + ' retried' : '') + (fail ? ' \u00b7 ' + fail + ' failed' : ''), fail ? 'warn' : 'info');
+    };
+    const scheduleDraw = () => { if (!drawTimer) drawTimer = setTimeout(drawStatus, 250); };
 
     const processItem = async (i) => {
       const res = queue[i];
+      active++;
+      scheduleDraw();
       try {
         if (res.kind === 'key') {
           if (!res.keyValue && res.domElement) {
@@ -965,15 +975,30 @@
           saveKeyToVault({ bundleId: state.bundleId, bundleName: state.bundleName, resourceId: res.id, productTitle: res.productTitle, serviceType: res.typeOrExt, keyValue: res.keyValue });
           ok++;
         } else {
-          const dlUrl = await withPageLock(() => resolveDownloadUrl(res));
-          const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res, dlUrl);
-          setStatusMessage('[' + finished + '/' + queue.length + ' done] Saving ' + displayPath + '...', 'info');
-          const blob = await fetchBinaryBlobViaGM(dlUrl, (pct) => setStatusMessage('[' + finished + '/' + queue.length + ' done] ' + displayPath + ' (' + pct + ')', 'info'));
-          await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, blob);
+          // Retry transient failures (CDN errors, timeouts on a busy connection) after 2 s, 4 s, then 30 s.
+          const RETRY_DELAYS_MS = [2000, 4000, 30000];
+          for (let attempt = 1; ; attempt++) {
+            try {
+              const dlUrl = await withPageLock(() => resolveDownloadUrl(res));
+              const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res, dlUrl);
+              const blob = await fetchBinaryBlobViaGM(dlUrl);
+              await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, blob);
+              bytesSaved += blob.size;
+              break;
+            } catch (e) {
+              if (attempt > RETRY_DELAYS_MS.length) throw e;
+              retried++;
+              console.warn('[HB-DL] Retrying (' + attempt + '/' + RETRY_DELAYS_MS.length + '):', res.productTitle, res.typeOrExt, e.message);
+              scheduleDraw();
+              await politeWait(RETRY_DELAYS_MS[attempt - 1]);
+            }
+          }
           ok++;
         }
-      } catch (e) { console.error('[HB-DL] Failed item:', res.productTitle, e); fail++; }
+      } catch (e) { console.error('[HB-DL] Failed item:', res.productTitle, e); fail++; failedNotes.push(res.productTitle + ' ' + res.typeOrExt + ': ' + e.message); }
       finished++;
+      active--;
+      scheduleDraw();
       syncCheckboxesUI();
     };
 
@@ -992,11 +1017,12 @@
       ok -= zipEntries.length;
     }
 
+    clearTimeout(drawTimer);
     state.isDownloading = false;
     updateExecuteButtonLabel();
     syncCheckboxesUI();
     const target = rootDirHandle ? '"' + state.normalizedBundleName + '/<type>/" subfolders' : '"' + state.normalizedBundleName + '.zip" (' + zipPart + ' file' + (zipPart === 1 ? '' : 's') + ')';
-    setStatusMessage('Finished: ' + ok + ' saved into ' + target + (fail ? ' (' + fail + ' failed).' : '.'), fail ? 'warn' : 'success');
+    setStatusMessage('Finished: ' + ok + ' saved into ' + target + (fail ? ' (' + fail + ' failed: ' + failedNotes.slice(0, 3).join('; ') + (failedNotes.length > 3 ? '; ...' : '') + ').' : '.'), fail ? 'warn' : 'success');
   }
 
   function injectStyles() {
