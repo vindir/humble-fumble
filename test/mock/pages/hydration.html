@@ -1,0 +1,15 @@
+<!doctype html><html><head><title>Hydration Bundle</title>
+<script>window.__errs=[];window.addEventListener('error',e=>window.__errs.push(String(e.message)));</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+</head><body>
+<div id="root"><div><h1>Hydration Bundle</h1><ul><li><h3>Book One</h3><a href="/files/book.pdf" download="">Download</a></li></ul></div></div>
+<script>
+// Simulate late hydration (after window load), like a lazily hydrated Next.js route.
+const h = React.createElement;
+setTimeout(() => ReactDOM.hydrateRoot(document.getElementById('root'),
+  h('div', null, h('h1', null, 'Hydration Bundle'),
+    h('ul', null, h('li', null, h('h3', null, 'Book One'), h('a', {href:'/files/book.pdf', download:''}, 'Download'))))), 2500);
+</script>
+<script src="/humble_fumble.user.js"></script>
+</body></html>

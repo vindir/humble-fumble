@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Test Bundle</title><script>
+// Imitate Firefox/Safari (no folder picker) and capture the final zip download instead of saving it.
+try { delete window.showDirectoryPicker; } catch (e) {}
+window.__dl = [];
+const _click = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () { if (this.download && this.href.startsWith('blob:')) { window.__dl.push(this.download); return; } return _click.apply(this, arguments); };
+</script></head><body><h1>Test Bundle</h1><ul><li><h3>Book One</h3><a href="/files/book.pdf" download>Download</a></li><li><h3>Game Alpha</h3><button class="keyfield">Reveal your Steam key</button> <span>AAAAA-BBBBB-CCCCC</span></li></ul><script src="/humble_fumble.user.js"></script></body></html>

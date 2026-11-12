@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Concurrency Bundle</title><script>
+// Imitate Firefox/Safari (no folder picker) and capture the final zip download instead of saving it.
+try { delete window.showDirectoryPicker; } catch (e) {}
+window.__dl = [];
+const _click = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () { if (this.download && this.href.startsWith('blob:')) { window.__dl.push(this.download); return; } return _click.apply(this, arguments); };
+</script></head><body><h1>Concurrency Bundle</h1><ul><li><h3>Book 0</h3><a href="/files/b0.pdf" download>Download</a></li><li><h3>Book 1</h3><a href="/files/b1.pdf" download>Download</a></li><li><h3>Book 2</h3><a href="/files/b2.pdf" download>Download</a></li><li><h3>Book 3</h3><a href="/files/b3.pdf" download>Download</a></li><li><h3>Book 4</h3><a href="/files/b4.pdf" download>Download</a></li><li><h3>Book 5</h3><a href="/files/b5.pdf" download>Download</a></li><li><h3>Book 6</h3><a href="/files/b6.pdf" download>Download</a></li><li><h3>Book 7</h3><a href="/files/b7.pdf" download>Download</a></li></ul><script src="/humble_fumble.user.js"></script></body></html>

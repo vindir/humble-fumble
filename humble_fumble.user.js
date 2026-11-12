@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.5.1
+// @version      5.7.0
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -802,7 +802,8 @@
       '<div class="hb-dl-modal-type-grid">' + chipsHtml + '</div>' +
       '<div style="margin:10px 0;font-size:12px;"><div style="color:#94a3b8;font-size:11px;margin-bottom:5px;">Default behavior skips ' + doneCount + ' already-downloaded item(s).</div>' +
       '<label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="hb-dl-force-redownload-cb" />' +
-      '<span>Force download of items already marked as downloaded in GM Storage</span></label></div>' +
+      '<span>Force download of items already marked as downloaded in GM Storage</span></label>' +
+      '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;">Simultaneous downloads <input type="number" id="hb-dl-concurrency-input" min="1" max="10" value="' + getConcurrency() + '" style="width:54px;background:#141720;color:#f8fafc;border:1px solid #475569;border-radius:4px;padding:2px 4px;" /><span style="color:#94a3b8;font-size:11px;">1-10, saved</span></label></div>' +
       '<div class="hb-dl-modal-actions"><button type="button" id="hb-dl-modal-cancel" class="hb-dl-btn">Cancel</button>' +
       '<button type="button" id="hb-dl-modal-start" class="hb-dl-btn hb-dl-btn-primary" ' + (defaultCount === 0 ? 'disabled' : '') + '>Start Download (' + defaultCount + ')</button></div></div>';
 
@@ -832,12 +833,17 @@
           return;
         }
       }
+      const conc = Math.min(10, Math.max(1, parseInt(backdrop.querySelector('#hb-dl-concurrency-input').value, 10) || DEFAULT_CONCURRENCY));
+      safeSet('hb_concurrency', conc);
       backdrop.remove();
-      await runDownloadQueue(q, dirHandle);
+      await runDownloadQueue(q, dirHandle, conc);
     });
   }
 
-  async function runDownloadQueue(queue, rootDirHandle) {
+  const DEFAULT_CONCURRENCY = 5;
+  const getConcurrency = () => Math.min(10, Math.max(1, parseInt(safeGet('hb_concurrency', DEFAULT_CONCURRENCY), 10) || DEFAULT_CONCURRENCY));
+
+  async function runDownloadQueue(queue, rootDirHandle, concurrency = DEFAULT_CONCURRENCY) {
     if (state.isDownloading || queue.length === 0) return;
     state.isDownloading = true;
     updateExecuteButtonLabel();
@@ -870,15 +876,22 @@
       if (zipBytes >= ZIP_PART_LIMIT) flushZip();
     };
 
-    for (let i = 0; i < queue.length; i++) {
+    // URL capture and key reveal click shared page elements and one global capture slot, so they run one at a time.
+    let pageLock = Promise.resolve();
+    const withPageLock = (fn) => { const r = pageLock.then(fn); pageLock = r.catch(() => {}); return r; };
+    let next = 0, finished = 0;
+
+    const processItem = async (i) => {
       const res = queue[i];
       try {
         if (res.kind === 'key') {
           if (!res.keyValue && res.domElement) {
-            res.domElement.click();
-            await politeWait(1200);
-            const txt = (res.wrapperElement || res.domElement.parentElement || res.domElement).innerText || '';
-            res.keyValue = (txt.match(/\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6})\b/) || [])[1] || 'REVEALED_ON_PAGE';
+            await withPageLock(async () => {
+              res.domElement.click();
+              await politeWait(1200);
+              const txt = (res.wrapperElement || res.domElement.parentElement || res.domElement).innerText || '';
+              res.keyValue = (txt.match(/\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6})\b/) || [])[1] || 'REVEALED_ON_PAGE';
+            });
           }
           const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res);
           const body = 'Bundle: ' + state.bundleName + '\nProduct: ' + res.productTitle + '\nKey: ' + res.keyValue + '\n';
@@ -886,17 +899,26 @@
           saveKeyToVault({ bundleId: state.bundleId, bundleName: state.bundleName, resourceId: res.id, productTitle: res.productTitle, serviceType: res.typeOrExt, keyValue: res.keyValue });
           ok++;
         } else {
-          const dlUrl = await resolveDownloadUrl(res);
+          const dlUrl = await withPageLock(() => resolveDownloadUrl(res));
           const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res, dlUrl);
-          setStatusMessage('[' + (i + 1) + '/' + queue.length + '] Saving ' + displayPath + '...', 'info');
-          const blob = await fetchBinaryBlobViaGM(dlUrl, (pct) => setStatusMessage('[' + (i + 1) + '/' + queue.length + '] ' + displayPath + ' (' + pct + ')', 'info'));
+          setStatusMessage('[' + finished + '/' + queue.length + ' done] Saving ' + displayPath + '...', 'info');
+          const blob = await fetchBinaryBlobViaGM(dlUrl, (pct) => setStatusMessage('[' + finished + '/' + queue.length + ' done] ' + displayPath + ' (' + pct + ')', 'info'));
           await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, blob);
           ok++;
         }
       } catch (e) { console.error('[HB-DL] Failed item:', res.productTitle, e); fail++; }
+      finished++;
       syncCheckboxesUI();
-      if (i < queue.length - 1) await politeWait(1200 + Math.floor(Math.random() * 1000));
-    }
+    };
+
+    const worker = async () => {
+      while (next < queue.length) {
+        const i = next++;
+        await processItem(i);
+        if (next < queue.length) await politeWait(1200 + Math.floor(Math.random() * 1000));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
 
     try { flushZip(); } catch (e) {
       console.error('[HB-DL] Could not build zip:', e);
@@ -914,7 +936,10 @@
   function injectStyles() {
     const st = document.createElement('style');
     st.textContent =
-      '#hb-dl-root-host{position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:2147483647!important;background:#161922!important;color:#f8fafc!important;border-bottom:3px solid #cb272c!important;padding:9px 16px!important;font-family:sans-serif!important;font-size:13px!important;box-shadow:0 4px 16px rgba(0,0,0,.6)!important}' +
+      '#hb-dl-root-host{position:relative!important;width:100%!important;box-sizing:border-box!important;z-index:2147483647!important;background:#161922!important;color:#f8fafc!important;border-bottom:3px solid #cb272c!important;padding:9px 16px!important;font-family:sans-serif!important;font-size:13px!important;box-shadow:0 4px 16px rgba(0,0,0,.6)!important}' +
+      '.hb-dl-banner{display:flex!important;width:100%!important;align-items:center!important;gap:10px!important;cursor:pointer!important;background:transparent!important;border:0!important;color:#fff!important;font:700 14px sans-serif!important;padding:2px 0!important;text-align:left!important}' +
+      '.hb-dl-banner-arrow{color:#ef4444!important;font-size:13px!important}.hb-dl-banner-hint{margin-left:auto!important;font-size:12px!important;font-weight:600!important;color:#7dd3fc!important;border:1px dashed #38bdf8!important;border-radius:99px!important;padding:2px 10px!important}' +
+      '.hb-dl-banner:hover .hb-dl-banner-hint{background:#38bdf8!important;color:#0f172a!important}#hb-dl-body{margin-top:8px!important}' +
       '.hb-dl-top-row{display:flex!important;flex-wrap:wrap!important;align-items:center!important;justify-content:space-between!important;gap:10px!important}' +
       '.hb-dl-brand,.hb-dl-controls{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important}' +
       '.hb-dl-bundle-title{font-weight:700!important;font-size:14px!important;color:#fff!important}' +
@@ -954,7 +979,9 @@
     const bar = document.createElement('div');
     bar.id = 'hb-dl-root-host';
     bar.innerHTML =
-      '<div class="hb-dl-top-row"><div class="hb-dl-brand"><span class="hb-dl-bundle-title" id="hb-dl-bundle-title-text">Humble Bundle Downloader</span>' +
+      '<button type="button" id="hb-dl-banner" class="hb-dl-banner" aria-expanded="false" aria-controls="hb-dl-body"><span class="hb-dl-banner-arrow" id="hb-dl-banner-arrow">\u25B6</span>' +
+      '<span class="hb-dl-banner-text">Humble Bundle Downloader</span><span class="hb-dl-banner-hint" id="hb-dl-banner-hint">Click to expand download options</span></button>' +
+      '<div id="hb-dl-body"><div class="hb-dl-top-row"><div class="hb-dl-brand"><span class="hb-dl-bundle-title" id="hb-dl-bundle-title-text">Humble Bundle Downloader</span>' +
       '<span class="hb-dl-folder-preview" id="hb-dl-folder-preview-text"></span><span class="hb-dl-page-badge hb-dl-page-badge-partial" id="hb-dl-page-complete-badge">0 / 0 Downloaded</span></div>' +
       '<div class="hb-dl-controls"><div class="hb-dl-split-group"><button type="button" id="hb-dl-execute-btn" class="hb-dl-btn hb-dl-btn-primary">Download Selected (0)</button>' +
       '<button type="button" id="hb-dl-dropdown-toggle" class="hb-dl-btn hb-dl-btn-primary">Filter Types (0)</button><div id="hb-dl-type-dropdown" class="hb-dl-dropdown-menu"></div></div>' +
@@ -964,8 +991,18 @@
       '<div id="hb-dl-drawer"><div class="hb-dl-box"><h4>Discovered Bundle Resources</h4><div id="hb-dl-resource-table-wrap"></div></div>' +
       '<div class="hb-dl-box"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span>Saved Keys Section</span><span>' +
       '<button type="button" id="hb-dl-export-keys-json" class="hb-dl-btn" style="padding:3px 8px;font-size:11px;">Export JSON</button> ' +
-      '<button type="button" id="hb-dl-export-keys-csv" class="hb-dl-btn" style="padding:3px 8px;font-size:11px;">Export CSV</button></span></h4><div id="hb-dl-keys-table-wrap"></div></div></div>';
-    document.documentElement.appendChild(bar);
+      '<button type="button" id="hb-dl-export-keys-csv" class="hb-dl-btn" style="padding:3px 8px;font-size:11px;">Export CSV</button></span></h4><div id="hb-dl-keys-table-wrap"></div></div></div></div>';
+    (document.body || document.documentElement).insertBefore(bar, (document.body || document.documentElement).firstChild); // in flow, so it pushes the page down instead of covering it
+    const setCollapsed = (c) => {
+      document.getElementById('hb-dl-body').style.display = c ? 'none' : '';
+      document.getElementById('hb-dl-banner').setAttribute('aria-expanded', String(!c));
+      document.getElementById('hb-dl-banner-arrow').textContent = c ? '\u25B6' : '\u25BC';
+      document.getElementById('hb-dl-banner-hint').textContent = c ? 'Click to expand download options' : 'Click to collapse';
+      bar.classList.toggle('hb-dl-collapsed', c);
+      safeSet('hb_ui_collapsed', c ? '1' : '0');
+    };
+    document.getElementById('hb-dl-banner').addEventListener('click', () => setCollapsed(document.getElementById('hb-dl-body').style.display !== 'none'));
+    setCollapsed(safeGet('hb_ui_collapsed', '1') !== '0');
     updateBaseFolderButtonUI();
 
     const toggle = document.getElementById('hb-dl-dropdown-toggle');

@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.5.1. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.7.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -12,7 +12,7 @@ Current version: 5.5.1. Primary target: [Violentmonkey](https://violentmonkey.gi
    **https://raw.githubusercontent.com/vindir/humble-fumble/main/humble_fumble.user.js**
 
 3. Click **Confirm installation**.
-4. Open a page under `humblebundle.com/home/library`, `/downloads`, `/home/keys`, or `/home/purchases`. The toolbar appears pinned to the top of the page a few seconds after the page loads: the script waits for Humble's React app to finish hydrating, then for about a second of no page changes, before adding anything. If it cannot detect React it falls back to a 6 second wait.
+4. Open a page under `humblebundle.com/home/library`, `/downloads`, `/home/keys`, or `/home/purchases`. The toolbar appears at the top of the page, above the site content, a few seconds after the page loads: the script waits for Humble's React app to finish hydrating, then for about a second of no page changes, before adding anything. If it cannot detect React it falls back to a 6 second wait.
 
 Chrome/Chromium: recent versions require the "Allow User Scripts" toggle (older versions: Developer mode) on the extension's details page before any userscript runs.
 
@@ -28,6 +28,8 @@ Updates: the script declares `@updateURL` and `@downloadURL` pointing at the raw
 4. In Chrome/Edge, choose a base folder when asked (first time only; see below).
 5. Items already downloaded are skipped by default. Tick the force option in the modal to re-download them.
 
+The toolbar starts collapsed as a one-line banner ("Humble Bundle Downloader ... Click to expand download options"). Click the banner to open or close the controls; the choice is remembered.
+
 Toolbar controls:
 
 | Control | Purpose |
@@ -41,7 +43,7 @@ Toolbar controls:
 
 The page is scanned on load, again about two seconds later, and after back/forward navigation. It does not watch for page changes, so click **Rescan Page** after expanding sections or navigating inside the site.
 
-Downloads run one at a time with a randomized 1.2 to 2.2 second pause between items. Large selections take a while.
+Downloads run 5 at a time by default. Change **Simultaneous downloads** (1 to 10) in the confirmation modal; the value is saved. Each slot waits a randomized 1.2 to 2.2 seconds between its items. Finding each item's download link and revealing keys still happens one item at a time, and in zip mode every in-flight file is held in memory, so a higher number uses more RAM and more load on Humble's hosts.
 
 ## Where files go
 
@@ -82,6 +84,7 @@ Download history is tracked per bundle, so the toolbar can show `N / M Downloade
 | Nothing saved after picking a folder | Re-pick the base folder; the browser may have revoked write permission. |
 | Status says "N failed" | Open the browser console and look for `[HB-DL] Failed item:` lines. |
 | Zip never appears (Firefox/Safari) | Allow downloads for `humblebundle.com` when the browser asks, and check that downloads are not blocked. |
+| Downloads fail or get throttled | Lower **Simultaneous downloads** in the confirmation modal. |
 | Large downloads fail | Files are fetched into memory as blobs before writing; very large files need enough RAM. |
 
 ## Development
@@ -91,6 +94,8 @@ The zip writer is covered by a test that builds an archive with the script's own
 ```bash
 node test/zip.test.js
 ```
+
+For browser checks without a Humble account (zip mode, concurrency, React hydration), see [test/mock/README.md](test/mock/README.md).
 
 ## Disclaimer
 
