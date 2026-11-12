@@ -1,6 +1,6 @@
 # Userscript manager and browser compatibility
 
-Status below is for `humble_fumble.user.js` v5.5.0. Read the "How this was tested" section before relying on any row marked untested.
+Status below is for `humble_fumble.user.js` v5.5.1. Read the "How this was tested" section before relying on any row marked untested.
 
 ## Summary
 
@@ -19,6 +19,7 @@ Done, in a Chromium browser pane against a local mock page with one file link an
 - No folder API (the page deleted `showDirectoryPicker` to imitate Firefox/Safari): both items detected, the folder button hidden, a valid `Test_Bundle.zip` produced with `Test_Bundle/pdf/book.pdf` and `Test_Bundle/steam_key/...txt`, and history marked only after delivery.
 - Folder API (a stubbed in-memory directory handle): files written under `Bundle/type/`, no zip produced.
 - Key vault: Copy, Export JSON, and Export CSV worked, including CSV quoting and the formula-prefix rule.
+- Hydration (v5.5.1): a server-rendered React 18 mock page that hydrates 2.5 seconds after load. v5.5.0 reproduced `Minified React error #418` and `#423` there and lost its inline checkboxes. v5.5.1 added the toolbar at about 3.6 seconds with no React errors, and the checkbox survived; a baseline page with no userscript had no errors. Two further loads matched. The mock is React 18 production; Humble's real app (a different React build, hydrating the whole document) was not available to test, so the fix is unconfirmed on the live site.
 - `node test/zip.test.js`: the generated zip passes Python `zipfile` CRC checks and `unzip -t`. The test fails if the CRC fields are broken.
 
 Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or against the live Humble site. Everything in those rows comes from reading which APIs the script calls.
@@ -28,6 +29,7 @@ Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or a
 - 5.0.0 had the `.zip` fallback and the key export/copy buttons.
 - 5.4.0 removed both. Without a folder picker it fetched files and discarded them while still marking them downloaded, so Firefox and Safari saved nothing.
 - 5.5.0 restored the zip fallback (and marks downloaded only after the zip is delivered) and restored Copy / Export JSON / Export CSV.
+- 5.5.1 waits for React hydration before adding any DOM (fixes React error #418) and adds `@updateURL` / `@downloadURL` / `@homepageURL` / `@supportURL`.
 
 ## APIs the script uses
 

@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.5.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.5.1. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -12,13 +12,13 @@ Current version: 5.5.0. Primary target: [Violentmonkey](https://violentmonkey.gi
    **https://raw.githubusercontent.com/vindir/humble-fumble/main/humble_fumble.user.js**
 
 3. Click **Confirm installation**.
-4. Open a page under `humblebundle.com/home/library`, `/downloads`, `/home/keys`, or `/home/purchases`. The toolbar appears pinned to the top of the page.
+4. Open a page under `humblebundle.com/home/library`, `/downloads`, `/home/keys`, or `/home/purchases`. The toolbar appears pinned to the top of the page a few seconds after the page loads: the script waits for Humble's React app to finish hydrating, then for about a second of no page changes, before adding anything. If it cannot detect React it falls back to a 6 second wait.
 
 Chrome/Chromium: recent versions require the "Allow User Scripts" toggle (older versions: Developer mode) on the extension's details page before any userscript runs.
 
 Manual install: Violentmonkey dashboard → **+** → **Install from URL**, paste the raw URL above. Or paste the contents of `humble_fumble.user.js` into a new script.
 
-The script has no auto-update URL, so to update, reinstall from the raw URL.
+Updates: the script declares `@updateURL` and `@downloadURL` pointing at the raw URL, so Violentmonkey and Tampermonkey check for new versions on their own schedule (each manager has an update-interval setting, and a **Check for updates** action in its dashboard). A new version is only offered when `@version` in the script increases. Versions before 5.5.1 have no update URL and need one manual reinstall from the raw URL.
 
 ## Use
 
@@ -74,7 +74,8 @@ Download history is tracked per bundle, so the toolbar can show `N / M Downloade
 
 | Symptom | Try |
 |---|---|
-| No toolbar | Confirm the script is enabled and the URL matches one of the paths above; reload. |
+| No toolbar | Confirm the script is enabled and the URL matches one of the paths above; wait up to about 20 seconds on a slow page; reload. |
+| `Minified React error #418` in the console | Hydration mismatch: something changed the page before React finished. 5.5.1 delays all page changes until after hydration. Check you are on 5.5.1 or later; if it still appears, disable other userscripts and extensions to see whether this script is the cause, and open an issue. |
 | Items missing or wrong | Click **Rescan Page**. Humble changes its markup, so detection may need updates. |
 | "Could not resolve URL" in the console | Click the item's own download button once on the page, then **Rescan Page** and retry. |
 | Picker rejects the folder (macOS) | You chose `Downloads` or `Documents` itself. Make a subfolder inside it and pick that. |

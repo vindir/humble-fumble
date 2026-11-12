@@ -1,9 +1,13 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.5.0
+// @version      5.5.1
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
+// @homepageURL  https://github.com/vindir/humble-fumble
+// @supportURL   https://github.com/vindir/humble-fumble/issues
+// @downloadURL  https://raw.githubusercontent.com/vindir/humble-fumble/main/humble_fumble.user.js
+// @updateURL    https://raw.githubusercontent.com/vindir/humble-fumble/main/humble_fumble.user.js
 // @match        *://*.humblebundle.com/home/library*
 // @match        *://*.humblebundle.com/downloads*
 // @match        *://*.humblebundle.com/home/keys*
@@ -1078,14 +1082,44 @@
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // Adding nodes to Humble's React tree before hydration ends throws React error #418 and forces a re-render
+  // that deletes our checkboxes. Wait until React has mounted its root and the DOM has been quiet for 1s.
+  // shortcut: if React's root marker is not visible to the script (isolated world), falls back to a 6s wait.
+  function whenPageSettled() {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      let lastMutation = start;
+      const obs = new MutationObserver(() => { lastMutation = Date.now(); });
+      obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+      const hasReactRoot = () =>
+        [document, document.documentElement, document.body, ...Array.from(document.body ? document.body.children : [])]
+          .some((n) => n && Object.keys(n).some((k) => k.startsWith('__reactContainer$')));
+      let rootSeenAt = 0;
+      const timer = setInterval(() => {
+        const now = Date.now();
+        const age = now - start;
+        // Hydration itself does not mutate the DOM, so time the quiet period from when the root first appears.
+        if (!rootSeenAt && hasReactRoot()) rootSeenAt = now;
+        const ready = rootSeenAt || age > 6000;
+        if ((ready && now - Math.max(lastMutation, rootSeenAt) > 1000) || age > 20000) {
+          clearInterval(timer);
+          obs.disconnect();
+          resolve();
+        }
+      }, 250);
+    });
+  }
+
   function initOnce() {
     installDirectInterceptors();
-    injectStyles();
-    ensureToolbarMounted();
-    loadSavedDirHandle();
-    scanPageResources();
-    setTimeout(scanPageResources, 1800);
-    window.addEventListener('popstate', () => setTimeout(scanPageResources, 800));
+    whenPageSettled().then(() => {
+      injectStyles();
+      ensureToolbarMounted();
+      loadSavedDirHandle();
+      scanPageResources();
+      setTimeout(scanPageResources, 1800);
+      window.addEventListener('popstate', () => setTimeout(scanPageResources, 800));
+    });
   }
 
   if (document.readyState === 'complete') initOnce();
