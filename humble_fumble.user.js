@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.4.0
+// @version      5.5.0
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @match        *://*.humblebundle.com/home/library*
@@ -284,6 +284,91 @@
     const w = await fHandle.createWritable();
     await w.write(content);
     await w.close();
+  }
+
+  // ZIP-BEGIN (fallback for browsers without showDirectoryPicker: Firefox, Safari)
+  // shortcut: STORE-only, no zip64, so each part must stay under 4 GiB; runDownloadQueue splits parts at ZIP_PART_LIMIT.
+  const ZIP_PART_LIMIT = 1024 * 1024 * 1024;
+  const CRC32_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(u8) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < u8.length; i++) crc = CRC32_TABLE[(crc ^ u8[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  // entries: [{ relativePath: 'Bundle/epub/a.epub', dataUint8: Uint8Array }]
+  function buildStructuredZipBlob(entries) {
+    const enc = new TextEncoder();
+    const local = [];
+    const central = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc.encode(e.relativePath);
+      const data = e.dataUint8;
+      const crc = crc32(data);
+      const size = data.length;
+      const lh = new Uint8Array(30 + name.length);
+      const lv = new DataView(lh.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true); // UTF-8 names
+      lv.setUint16(12, 0x0021, true); // DOS date 1980-01-01
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, name.length, true);
+      lh.set(name, 30);
+      const ch = new Uint8Array(46 + name.length);
+      const cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(14, 0x0021, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, name.length, true);
+      cv.setUint32(42, offset, true);
+      ch.set(name, 46);
+      local.push(lh, data);
+      central.push(ch);
+      offset += lh.length + size;
+    }
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, central.reduce((n, a) => n + a.length, 0), true);
+    ev.setUint32(16, offset, true);
+    return new Blob([...local, ...central, eocd], { type: 'application/zip' });
+  }
+  // ZIP-END
+
+  function triggerBlobDownload(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function safeSetClipboard(text) {
+    try { if (typeof GM_setClipboard === 'function') { GM_setClipboard(text); return; } } catch (_) {}
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
   }
 
   function safeGet(key, fallback) {
@@ -702,13 +787,14 @@
     const chipsHtml = Object.entries(counts)
       .map(([ext, c]) => '<label class="hb-dl-modal-type-chip"><input type="checkbox" class="hb-dl-confirm-ext-cb" value="' + escapeHtml(ext) + '" checked /><span><strong>' + escapeHtml(ext.toUpperCase()) + '</strong> (' + c + ')</span></label>')
       .join('');
-    const rootName = state.rootDirHandle ? state.rootDirHandle.name : 'Select on Start (one-time prompt)';
+    const fsa = hasFsa();
+    const rootName = !fsa ? 'Structured .ZIP archive (this browser has no folder picker)' : state.rootDirHandle ? state.rootDirHandle.name : 'Select on Start (one-time prompt)';
 
     backdrop.innerHTML =
       '<div class="hb-dl-modal"><h3>Confirm Target Extensions &amp; Subfolder Creation</h3>' +
       '<div class="hb-dl-modal-folder-box"><div><div style="font-size:12px;">Base Folder: <strong style="color:#4ade80;">' + escapeHtml(rootName) + '</strong></div>' +
       '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Creates real subfolders: <code>' + escapeHtml(state.normalizedBundleName) + '/&lt;ext&gt;/&lt;filename&gt;</code></div></div>' +
-      '<button type="button" id="hb-dl-modal-pick-btn" class="hb-dl-btn">Choose Base Folder</button></div>' +
+      (fsa ? '<button type="button" id="hb-dl-modal-pick-btn" class="hb-dl-btn">Choose Base Folder</button>' : '') + '</div>' +
       '<div class="hb-dl-modal-type-grid">' + chipsHtml + '</div>' +
       '<div style="margin:10px 0;font-size:12px;"><div style="color:#94a3b8;font-size:11px;margin-bottom:5px;">Default behavior skips ' + doneCount + ' already-downloaded item(s).</div>' +
       '<label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="hb-dl-force-redownload-cb" />' +
@@ -752,6 +838,33 @@
     state.isDownloading = true;
     updateExecuteButtonLabel();
     let ok = 0, fail = 0;
+    const zipEntries = [];
+    const zipPending = [];
+    let zipBytes = 0, zipPart = 0;
+
+    const flushZip = () => {
+      if (zipEntries.length === 0) return;
+      zipPart++;
+      triggerBlobDownload(buildStructuredZipBlob(zipEntries), state.normalizedBundleName + (zipPart > 1 ? '_part' + zipPart : '') + '.zip');
+      zipPending.forEach((p) => markResourceDownloaded(state.bundleId, p.id, { path: p.path }));
+      zipEntries.length = 0;
+      zipPending.length = 0;
+      zipBytes = 0;
+    };
+
+    // Folder mode writes now; zip mode queues and only marks "downloaded" once the zip is handed to the browser.
+    const saveContent = async (res, bundleFolder, subFolder, fileName, displayPath, content) => {
+      if (rootDirHandle) {
+        await writeToOsSubfolder(rootDirHandle, bundleFolder, subFolder, fileName, content);
+        markResourceDownloaded(state.bundleId, res.id, { path: displayPath });
+        return;
+      }
+      const data = typeof content === 'string' ? new TextEncoder().encode(content) : new Uint8Array(await content.arrayBuffer());
+      zipEntries.push({ relativePath: displayPath, dataUint8: data });
+      zipPending.push({ id: res.id, path: displayPath });
+      zipBytes += data.length;
+      if (zipBytes >= ZIP_PART_LIMIT) flushZip();
+    };
 
     for (let i = 0; i < queue.length; i++) {
       const res = queue[i];
@@ -765,27 +878,33 @@
           }
           const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res);
           const body = 'Bundle: ' + state.bundleName + '\nProduct: ' + res.productTitle + '\nKey: ' + res.keyValue + '\n';
-          if (rootDirHandle) await writeToOsSubfolder(rootDirHandle, bundleFolder, subFolder, cleanFileName, body);
+          await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, body);
           saveKeyToVault({ bundleId: state.bundleId, bundleName: state.bundleName, resourceId: res.id, productTitle: res.productTitle, serviceType: res.typeOrExt, keyValue: res.keyValue });
-          markResourceDownloaded(state.bundleId, res.id, { path: displayPath });
           ok++;
         } else {
           const dlUrl = await resolveDownloadUrl(res);
           const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res, dlUrl);
           setStatusMessage('[' + (i + 1) + '/' + queue.length + '] Saving ' + displayPath + '...', 'info');
           const blob = await fetchBinaryBlobViaGM(dlUrl, (pct) => setStatusMessage('[' + (i + 1) + '/' + queue.length + '] ' + displayPath + ' (' + pct + ')', 'info'));
-          if (rootDirHandle) await writeToOsSubfolder(rootDirHandle, bundleFolder, subFolder, cleanFileName, blob);
-          markResourceDownloaded(state.bundleId, res.id, { path: displayPath });
+          await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, blob);
           ok++;
         }
       } catch (e) { console.error('[HB-DL] Failed item:', res.productTitle, e); fail++; }
       syncCheckboxesUI();
-      if (i < queue.length - 1) await politeWait(2200 + Math.floor(Math.random() * 1000));
+      if (i < queue.length - 1) await politeWait(1200 + Math.floor(Math.random() * 1000));
+    }
+
+    try { flushZip(); } catch (e) {
+      console.error('[HB-DL] Could not build zip:', e);
+      fail += zipEntries.length;
+      ok -= zipEntries.length;
     }
 
     state.isDownloading = false;
     updateExecuteButtonLabel();
-    setStatusMessage('Finished: ' + ok + ' saved into "' + state.normalizedBundleName + '/<type>/" subfolders' + (fail ? ' (' + fail + ' failed).' : '.'), fail ? 'warn' : 'success');
+    syncCheckboxesUI();
+    const target = rootDirHandle ? '"' + state.normalizedBundleName + '/<type>/" subfolders' : '"' + state.normalizedBundleName + '.zip" (' + zipPart + ' file' + (zipPart === 1 ? '' : 's') + ')';
+    setStatusMessage('Finished: ' + ok + ' saved into ' + target + (fail ? ' (' + fail + ' failed).' : '.'), fail ? 'warn' : 'success');
   }
 
   function injectStyles() {
@@ -821,7 +940,9 @@
 
   function updateBaseFolderButtonUI() {
     const btn = document.getElementById('hb-dl-pick-root-dir-btn');
-    if (btn) btn.textContent = state.rootDirHandle ? 'Base Folder: ' + state.rootDirHandle.name + '/' : 'Set Base Folder';
+    if (!btn) return;
+    if (!hasFsa()) { btn.style.display = 'none'; return; }
+    btn.textContent = state.rootDirHandle ? 'Base Folder: ' + state.rootDirHandle.name + '/' : 'Set Base Folder';
   }
 
   function ensureToolbarMounted() {
@@ -837,7 +958,9 @@
       '<button type="button" id="hb-dl-clear-selection-btn" class="hb-dl-btn">Clear</button><button type="button" id="hb-dl-toggle-drawer-btn" class="hb-dl-btn">Resources &amp; Keys (0)</button></div></div>' +
       '<div id="hb-dl-status-msg" class="hb-dl-status-line">Ready (0 selected by default).</div>' +
       '<div id="hb-dl-drawer"><div class="hb-dl-box"><h4>Discovered Bundle Resources</h4><div id="hb-dl-resource-table-wrap"></div></div>' +
-      '<div class="hb-dl-box"><h4>Saved Keys Section</h4><div id="hb-dl-keys-table-wrap"></div></div></div>';
+      '<div class="hb-dl-box"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><span>Saved Keys Section</span><span>' +
+      '<button type="button" id="hb-dl-export-keys-json" class="hb-dl-btn" style="padding:3px 8px;font-size:11px;">Export JSON</button> ' +
+      '<button type="button" id="hb-dl-export-keys-csv" class="hb-dl-btn" style="padding:3px 8px;font-size:11px;">Export CSV</button></span></h4><div id="hb-dl-keys-table-wrap"></div></div></div>';
     document.documentElement.appendChild(bar);
     updateBaseFolderButtonUI();
 
@@ -850,6 +973,31 @@
     document.getElementById('hb-dl-rescan-btn').addEventListener('click', () => { scanPageResources(); setStatusMessage('Rescanned: ' + state.resources.length + ' resources found.', 'info'); });
     document.getElementById('hb-dl-clear-selection-btn').addEventListener('click', () => { state.selectedResourceIds.clear(); state.selectedTypesDropdown.clear(); refreshToolbarAndPanel(); syncCheckboxesUI(); });
     document.getElementById('hb-dl-toggle-drawer-btn').addEventListener('click', () => { document.getElementById('hb-dl-drawer').classList.toggle('open'); renderResourcesTable(); renderKeysSection(); });
+    document.getElementById('hb-dl-export-keys-json').addEventListener('click', () => exportKeys('json'));
+    document.getElementById('hb-dl-export-keys-csv').addEventListener('click', () => exportKeys('csv'));
+  }
+
+  // Writes into <base>/<Bundle>/keys/ when a base folder is set, otherwise downloads the file.
+  async function exportKeys(kind) {
+    const vault = getSavedKeysVault();
+    if (vault.length === 0) { setStatusMessage('No keys saved yet.', 'warn'); return; }
+    const isCsv = kind === 'csv';
+    // Leading = + - @ would be run as a formula by spreadsheets, so prefix those cells with '.
+    const cell = (v) => '"' + String(v == null ? '' : v).replace(/^[=+\-@]/, "'$&").replace(/"/g, '""') + '"';
+    const body = isCsv
+      ? 'Bundle,Product,Service,Key,SavedAt\n' + vault.map((k) => [k.bundleName, k.productTitle, k.serviceType, k.keyValue, k.savedAt].map(cell).join(',')).join('\n')
+      : JSON.stringify(vault, null, 2);
+    const name = 'humble_keys_vault.' + kind;
+    if (state.rootDirHandle) {
+      try {
+        const dir = await ensureVerifiedDirHandle();
+        await writeToOsSubfolder(dir, state.normalizedBundleName || 'Humble_Library', 'keys', name, body);
+        setStatusMessage('Exported ' + name + ' into "' + (state.normalizedBundleName || 'Humble_Library') + '/keys/".', 'success');
+        return;
+      } catch (_) {}
+    }
+    triggerBlobDownload(new Blob([body], { type: isCsv ? 'text/csv' : 'application/json' }), name);
+    setStatusMessage('Exported ' + name + '.', 'success');
   }
 
   function updateExecuteButtonLabel() {
@@ -912,8 +1060,13 @@
     if (!wrap) return;
     const vault = getSavedKeysVault();
     if (vault.length === 0) { wrap.innerHTML = '<div style="color:#94a3b8;font-size:12px;">No keys saved yet.</div>'; return; }
-    wrap.innerHTML = '<table class="hb-dl-table"><thead><tr><th>Product</th><th>Service</th><th>Key</th></tr></thead><tbody>' +
-      vault.slice().reverse().map((k) => '<tr><td>' + escapeHtml(k.productTitle) + '</td><td>' + escapeHtml(k.serviceType) + '</td><td><code>' + escapeHtml(k.keyValue) + '</code></td></tr>').join('') + '</tbody></table>';
+    wrap.innerHTML = '<table class="hb-dl-table"><thead><tr><th>Product</th><th>Service</th><th>Key</th><th></th></tr></thead><tbody>' +
+      vault.slice().reverse().map((k) => '<tr><td>' + escapeHtml(k.productTitle) + '</td><td>' + escapeHtml(k.serviceType) + '</td><td><code>' + escapeHtml(k.keyValue) + '</code></td><td><button type="button" class="hb-dl-btn hb-dl-copy-key-btn" data-key-val="' + escapeHtml(k.keyValue) + '" style="padding:2px 6px;font-size:11px;">Copy</button></td></tr>').join('') + '</tbody></table>';
+    wrap.querySelectorAll('.hb-dl-copy-key-btn').forEach((btn) => btn.addEventListener('click', () => {
+      safeSetClipboard(btn.dataset.keyVal);
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+    }));
   }
 
   function setStatusMessage(msg, level = 'info') {
