@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.7.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.7.3. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -59,6 +59,8 @@ Zip mode details:
 - Nothing reaches your disk until the batch ends, then the zip downloads. Closing the tab mid-batch loses the batch.
 - Items are marked "downloaded" only after the zip is handed to the browser, so a failed batch can be retried.
 - Everything in a part is held in memory. A part is capped at about 1 GiB; larger batches are split into `<Bundle>.zip`, `<Bundle>_part2.zip`, and so on. Your browser may ask to allow multiple downloads.
+
+Keys are revealed by clicking the page's Reveal button, then read from the page for up to 10 seconds (React data, input values, then visible text). If no key appears, the item is reported as failed and nothing is written or marked downloaded; the console shows the row text it saw.
 
 Service keys are written as small `.txt` files under `<Bundle>/<service>_key/` (or into the zip) and appear in the **Resources & Keys** drawer. In the drawer, **Copy** copies one key, and **Export JSON** / **Export CSV** save `humble_keys_vault.json` / `.csv`: into `<Bundle>/keys/` in the base folder if one is set, otherwise as a normal browser download. CSV cells that start with `=`, `+`, `-`, or `@` get a leading `'` so spreadsheets do not run them as formulas.
 

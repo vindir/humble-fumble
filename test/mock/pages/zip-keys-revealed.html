@@ -1,0 +1,12 @@
+<!doctype html><html><head><title>Test Bundle</title><script>
+// Imitate Firefox/Safari (no folder picker) and capture the final zip download instead of saving it.
+try { delete window.showDirectoryPicker; } catch (e) {}
+window.__dl = [];
+const _click = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () { if (this.download && this.href.startsWith('blob:')) { window.__dl.push(this.download); return; } return _click.apply(this, arguments); };
+</script></head><body><h1>Revealed Bundle</h1><ul>
+<li><h3>Game Alpha</h3><div class="key-redeemer"><span>Steam</span><div class="keyvalue">AAAAA-BBBBB-CCCCC</div></div></li>
+<li><h3>Game Beta</h3><input readonly value="DDDDD-EEEEE-FFFFF"> <span>Steam</span></li>
+</ul>
+<div class="bg-card"><div class="row"><div><div>Game Gamma - $18</div></div><div><button type="button"><span class="truncate">74679RGEX2A69RGEX2A6</span><svg width="8" height="8"></svg></button></div></div></div>
+<script src="/humble_fumble.user.js"></script></body></html>

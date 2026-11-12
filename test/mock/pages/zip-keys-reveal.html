@@ -1,0 +1,23 @@
+<!doctype html><html><head><title>Test Bundle</title><script>
+// Imitate Firefox/Safari (no folder picker) and capture the final zip download instead of saving it.
+try { delete window.showDirectoryPicker; } catch (e) {}
+window.__dl = [];
+const _click = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function () { if (this.download && this.href.startsWith('blob:')) { window.__dl.push(this.download); return; } return _click.apply(this, arguments); };
+</script></head><body><h1>Reveal Bundle</h1><ul>
+<li><h3>Game Alpha</h3><button class="keyfield" data-mode="input">Reveal your Steam key</button></li>
+<li><h3>Game Beta</h3><button class="keyfield" data-mode="text">Reveal your Steam key</button></li>
+<li class="bg-card"><h3>Game Delta</h3><button class="keyfield" data-mode="button">Reveal</button></li>
+<li><h3>Game Gamma</h3><button class="keyfield" data-mode="never">Reveal your Steam key</button></li>
+</ul>
+<script>
+// Reveal is asynchronous: the key shows up 1.5 s after the click, as an input value, as plain text, or never.
+document.querySelectorAll('.keyfield').forEach((b, i) => b.addEventListener('click', () => {
+  const mode = b.dataset.mode, li = b.parentElement;
+  setTimeout(() => {
+    if (mode === 'button') b.textContent = 'QQQQQ11111WWWWW22222';
+    if (mode === 'input') li.insertAdjacentHTML('beforeend', '<input readonly value="AAAAA-BBBBB-CCCCC">');
+    if (mode === 'text') li.insertAdjacentHTML('beforeend', '<div>DDDDD-EEEEE-FFFFF</div>');
+  }, 1500);
+}));
+</script><script src="/humble_fumble.user.js"></script></body></html>

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.7.0
+// @version      5.7.3
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -62,6 +62,11 @@
     { id: 'ubisoft_key', rx: /\bubisoft\b|\buplay\b/i },
     { id: 'other_key', rx: /\b(reveal|redeem|claim)\s*(your\s+)?(key|code)\b|\blicense\s*key\b/i }
   ];
+
+  // Hyphenated keys (XXXXX-XXXXX-XXXXX) or plain 12-40 character codes that mix letters and digits, as in Humble's current key buttons.
+  const KEY_TOKEN_RX = /^(?:[A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40})$/;
+  const KEY_IN_TEXT_RX = /\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40})\b/;
+  const isKeyToken = (t) => KEY_TOKEN_RX.test(String(t || '').trim());
 
   const ALL_CATALOG_TYPES = [...FILE_EXTENSIONS, ...SERVICE_KEY_TYPES.map((s) => s.id)];
 
@@ -483,7 +488,7 @@
           }
           if (!meta.ext && /^(format|ext|extension|filetype|file_type|selectedformat)$/i.test(lk)) meta.ext = detectStrictExtension('', sv) || meta.ext;
           if (!meta.title && /^(human_name|humanname|title|product_name|productname|book_title)$/i.test(lk) && sv.length > 2 && !isBulkHeaderOrSummaryRow(null, sv)) meta.title = sv;
-          if (!meta.keyValue && /^(redeemed_key_val|key_val|keyvalue|serial|code)$/i.test(lk) && /^[A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}$/i.test(sv)) meta.keyValue = sv;
+          if (!meta.keyValue && /^(redeemed_key_val|key_val|keyvalue|serial|code)$/i.test(lk) && isKeyToken(sv)) meta.keyValue = sv;
         } else if (v && typeof v === 'object') walk(v, d + 1);
       }
     }
@@ -509,7 +514,9 @@
       if (Array.from(c.querySelectorAll('button, a[href], [role="button"]')).filter((b) => /^download$/i.test((b.textContent || '').trim())).length > 1) break;
       const cls = (typeof c.className === 'string' ? c.className : '').toLowerCase();
       if (/\b(row|item|card|product|book|subproduct|entry|resource|key-redeemer)\b/.test(cls)) return c;
-      if (c.parentElement && c.parentElement.children.length >= 2 && c.children.length >= 2 && c.offsetHeight < 260) return c;
+      // Count only the page's own children: our inline checkbox would otherwise shrink the row on a rescan.
+      const own = (n) => Array.from(n.children).filter((x) => !x.classList.contains('hb-dl-inline-wrap')).length;
+      if (c.parentElement && own(c.parentElement) >= 2 && own(c) >= 2 && c.offsetHeight < 260) return c;
     }
     return el.parentElement;
   }
@@ -619,12 +626,12 @@
         return;
       }
 
-      if (/\b(reveal|redeem|claim)\b/i.test(ownText) || el.classList.contains('keyfield') || /^[A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}$/i.test(ownText)) {
+      if (/\b(reveal|redeem|claim)\b/i.test(ownText) || el.classList.contains('keyfield') || isKeyToken(ownText)) {
         const keySvc = (SERVICE_KEY_TYPES.find((s) => s.rx.test(ownText + ' ' + rowText)) || { id: 'steam_key' }).id;
         if (hasRowExt(rowEl, keySvc)) return;
         markRowExt(rowEl, keySvc);
         handledEls.add(el);
-        const keyMatch = rMeta.keyValue || (rowText.match(/\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6})\b/) || [])[1] || null;
+        const keyMatch = rMeta.keyValue || (rowText.match(KEY_IN_TEXT_RX) || [])[1] || null;
         const res = registerResource({
           id: 'key_' + normTitle + '_' + keySvc,
           kind: 'key',
@@ -638,6 +645,25 @@
         if (keyMatch) saveKeyToVault({ bundleId: state.bundleId, bundleName: state.bundleName, resourceId: res.id, productTitle: title, serviceType: keySvc, keyValue: keyMatch });
         injectInlineCheckbox(el, res);
       }
+    });
+
+    // A revealed key has no Reveal button, so the loop above never sees it. Find it by its text or input value instead.
+    document.querySelectorAll('input, textarea, button, span, div, code, p, td, li').forEach((el) => {
+      if (el.closest('#hb-dl-root-host, .hb-dl-inline-wrap, #hb-dl-modal-backdrop, nav, header, footer')) return;
+      const isField = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+      if (!isField && el.children.length > 0) return;
+      const val = (isField ? el.value : el.textContent || '').trim();
+      if (!isKeyToken(val) || state.resources.some((r) => r.keyValue === val)) return;
+      const rowEl = el.closest('li, tr, article') || findRowContainer(el); // a tight wrapper around the key would hide the product title
+      const title = extractRowTitle(rowEl, null);
+      const rowText = rowEl ? (rowEl.innerText || rowEl.textContent || '') : '';
+      const keySvc = (SERVICE_KEY_TYPES.find((sv) => sv.rx.test(rowText)) || { id: 'steam_key' }).id;
+      if (hasRowExt(rowEl, keySvc)) return;
+      markRowExt(rowEl, keySvc);
+      const normTitle = normalizeForPath(title, 'Key_' + state.resources.length);
+      const res = registerResource({ id: 'key_' + normTitle + '_' + keySvc, kind: 'key', productTitle: title, typeOrExt: keySvc, fileName: normTitle + '_' + keySvc + '.txt', domElement: el, wrapperElement: rowEl, keyValue: val });
+      saveKeyToVault({ bundleId: state.bundleId, bundleName: state.bundleName, resourceId: res.id, productTitle: title, serviceType: keySvc, keyValue: val });
+      injectInlineCheckbox(el, res);
     });
 
     refreshToolbarAndPanel();
@@ -840,6 +866,21 @@
     });
   }
 
+  // Polls up to 10 s for the key to appear after a reveal click: React props, input/textarea values, then visible text.
+  async function waitForRevealedKey(res) {
+    const root = res.wrapperElement || res.domElement.parentElement || res.domElement;
+    for (let t = 0; t < 25; t++) {
+      await politeWait(t === 0 ? 600 : 400);
+      const fiber = inspectReactFiber(res.domElement).keyValue;
+      if (fiber) return fiber;
+      for (const f of root.querySelectorAll('input, textarea')) { const m = (f.value || '').match(KEY_IN_TEXT_RX); if (m) return m[1]; }
+      const m = (root.innerText || '').match(KEY_IN_TEXT_RX);
+      if (m) return m[1];
+    }
+    console.warn('[HB-DL] Key not found after reveal for', res.productTitle, '- row text:', (root.innerText || '').slice(0, 300));
+    return null;
+  }
+
   const DEFAULT_CONCURRENCY = 5;
   const getConcurrency = () => Math.min(10, Math.max(1, parseInt(safeGet('hb_concurrency', DEFAULT_CONCURRENCY), 10) || DEFAULT_CONCURRENCY));
 
@@ -888,11 +929,10 @@
           if (!res.keyValue && res.domElement) {
             await withPageLock(async () => {
               res.domElement.click();
-              await politeWait(1200);
-              const txt = (res.wrapperElement || res.domElement.parentElement || res.domElement).innerText || '';
-              res.keyValue = (txt.match(/\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6})\b/) || [])[1] || 'REVEALED_ON_PAGE';
+              res.keyValue = await waitForRevealedKey(res);
             });
           }
+          if (!res.keyValue) throw new Error('No key value found after reveal for ' + res.productTitle);
           const { bundleFolder, subFolder, cleanFileName, displayPath } = getOrganizedPathParts(res);
           const body = 'Bundle: ' + state.bundleName + '\nProduct: ' + res.productTitle + '\nKey: ' + res.keyValue + '\n';
           await saveContent(res, bundleFolder, subFolder, cleanFileName, displayPath, body);
@@ -1069,10 +1109,12 @@
     const counts = {};
     state.resources.forEach((r) => { counts[r.typeOrExt] = (counts[r.typeOrExt] || 0) + 1; });
     const pageTypes = Object.keys(counts).sort();
-    const list = pageTypes.length > 0 && !state.showAllStandardTypes ? pageTypes : Array.from(new Set([...pageTypes, ...ALL_CATALOG_TYPES]));
+    // Only list the whole catalog when asked; a page with nothing detected should show an empty list, not ~40 unrelated types.
+    const list = state.showAllStandardTypes ? Array.from(new Set([...pageTypes, ...ALL_CATALOG_TYPES])) : pageTypes;
     menu.innerHTML =
       '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:11px;"><span>Select Extensions / Types</span>' +
       '<a href="#" id="hb-dl-toggle-all-types" style="color:#7dd3fc;">' + (state.showAllStandardTypes ? 'Page Only' : 'Show All Types') + '</a></div>' +
+      (list.length ? '' : '<div style="font-size:12px;color:#94a3b8;padding:4px 6px;">No items detected on this page. Try Rescan Page.</div>') +
       list.map((k) => '<label class="hb-dl-dropdown-item"><span><input type="checkbox" class="hb-dl-type-cb" value="' + escapeHtml(k) + '" ' + (state.selectedTypesDropdown.has(k) ? 'checked' : '') + ' /> <strong>' + escapeHtml(k.toUpperCase()) + '</strong></span><span>' + (counts[k] || 0) + '</span></label>').join('');
     menu.querySelector('#hb-dl-toggle-all-types')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); state.showAllStandardTypes = !state.showAllStandardTypes; renderTypeDropdownMenu(); });
     menu.querySelectorAll('.hb-dl-type-cb').forEach((cb) => cb.addEventListener('change', (e) => {
