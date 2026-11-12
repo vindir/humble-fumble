@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.8.0
+// @version      5.8.1
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -484,8 +484,9 @@
         const lk = k.toLowerCase();
         if (typeof v === 'string') {
           const sv = v.trim();
-          if (!meta.directUrl && /^https?:\/\//i.test(sv) && !isNonDownloadUrl(sv)) {
-            meta.directUrl = sv;
+          // Register every URL by extension (a row's signedUrls holds cbz, pdf and .torrent side by side); skip .torrent so it can't shadow the real file.
+          if (/^https?:\/\//i.test(sv) && !isNonDownloadUrl(sv) && !/\.torrent(?:[?#]|$)/i.test(sv)) {
+            if (!meta.directUrl) meta.directUrl = sv;
             const ue = detectStrictExtension(sv, '');
             if (ue && !meta.urlsByExt[ue]) meta.urlsByExt[ue] = sv;
           }
@@ -634,7 +635,7 @@
           kind: 'file',
           productTitle: title,
           typeOrExt: finalExt,
-          url: fullUrl || rMeta.urlsByExt[finalExt] || rMeta.directUrl || null,
+          url: fullUrl || rMeta.urlsByExt[finalExt] || (Object.keys(rMeta.urlsByExt).length ? null : rMeta.directUrl) || null,
           fileName: normTitle + '.' + finalExt,
           domElement: anchor || el,
         });
@@ -802,7 +803,8 @@
     }
     if (!res.url && res.domElement) {
       const m = inspectReactFiber(res.domElement);
-      res.url = m.urlsByExt[res.typeOrExt] || m.directUrl || null;
+      // directUrl is only safe when no per-format URLs exist; otherwise a PDF row would get the CBZ link.
+      res.url = m.urlsByExt[res.typeOrExt] || (Object.keys(m.urlsByExt).length ? null : m.directUrl) || null;
     }
     if (!res.url && res.domElement) {
       res.url = await new Promise((resolve) => {

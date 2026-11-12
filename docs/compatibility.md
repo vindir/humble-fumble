@@ -1,6 +1,6 @@
 # Userscript manager and browser compatibility
 
-Status below is for `humble_fumble.user.js` v5.8.0. Read the "How this was tested" section before relying on any row marked untested.
+Status below is for `humble_fumble.user.js` v5.8.1. Read the "How this was tested" section before relying on any row marked untested.
 
 ## Summary
 
@@ -21,6 +21,7 @@ Done, in a Chromium browser pane against a local mock page with one file link an
 - Key vault: Copy, Export JSON, and Export CSV worked, including CSV quoting and the formula-prefix rule.
 - Hydration (v5.5.1): a server-rendered React 18 mock page that hydrates 2.5 seconds after load. v5.5.0 reproduced `Minified React error #418` and `#423` there and lost its inline checkboxes. v5.5.1 added the toolbar at about 3.6 seconds with no React errors, and the checkbox survived; a baseline page with no userscript had no errors. Two further loads matched. The mock is React 18 production; Humble's real app (a different React build, hydrating the whole document) was not available to test, so the fix is unconfirmed on the live site.
 - Concurrency (v5.7.0): a local server counted simultaneous requests while 8 mock files downloaded in zip mode. The peak was 5 and all 8 were saved. The saved setting was written to storage, and a run set to 3 peaked at 3.
+- `node test/fiber.test.js`: the script's own `inspectReactFiber` run on a row shaped like Humble's `signedUrls` (cbz, pdf and torrent entries); fails on the 5.8.0 logic.
 - `node test/zip.test.js`: the generated zip passes Python `zipfile` CRC checks and `unzip -t`. The test fails if the CRC fields are broken.
 
 Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or against the live Humble site. Everything in those rows comes from reading which APIs the script calls.
@@ -38,6 +39,7 @@ Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or a
 - 5.7.2 detects keys that are already revealed (no Reveal button) and no longer fills the type filter with the whole catalog when a page has no detected items.
 - 5.7.3 recognises plain unhyphenated key codes (12-40 uppercase letters and digits, as in Humble's current key buttons), and stops the row finder from counting the script's own checkbox, which produced a duplicate key on rescan.
 - 5.8.0 gives rows with the same derived name separate items (they were merged, so some files were never queued), rescans when the page changes, checks the size of each file written to a folder, and rejects empty or failed downloads and request timeouts.
+- 5.8.1 fixes PDF (and any second format) rows downloading the wrong file. A row's page data lists every format's signed URL; only the first (usually the CBZ) was recorded, so each other format's button was given that CBZ link. Each format now gets its own URL and `.torrent` links are ignored. Covered by `node test/fiber.test.js`.
 
 ## APIs the script uses
 

@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.8.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.8.1. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -84,7 +84,7 @@ Download history is tracked per bundle, so the toolbar can show `N / M Downloade
 | "Could not resolve URL" in the console | Click the item's own download button once on the page, then **Rescan Page** and retry. |
 | Picker rejects the folder (macOS) | You chose `Downloads` or `Documents` itself. Make a subfolder inside it and pick that. |
 | Nothing saved after picking a folder | Re-pick the base folder; the browser may have revoked write permission. |
-| An item was skipped or shows as downloaded but the file is missing | Update to 5.8.0 or later. Earlier versions could merge rows that rendered before their titles into one item. Newer versions also check the written file size and fail the item on a mismatch or an empty download. Re-download with the force option. |
+| An item was skipped or shows as downloaded but the file is missing | Update to 5.8.1 or later. Earlier versions could merge rows that rendered before their titles into one item. Newer versions also check the written file size and fail the item on a mismatch or an empty download. Re-download with the force option. |
 | Status says "N failed" | Open the browser console and look for `[HB-DL] Failed item:` lines. |
 | Zip never appears (Firefox/Safari) | Allow downloads for `humblebundle.com` when the browser asks, and check that downloads are not blocked. |
 | Downloads fail or get throttled | Lower **Simultaneous downloads** in the confirmation modal. |
@@ -96,6 +96,7 @@ The zip writer is covered by a test that builds an archive with the script's own
 
 ```bash
 node test/zip.test.js
+node test/fiber.test.js
 ```
 
 For browser checks without a Humble account (zip mode, concurrency, React hydration), see [test/mock/README.md](test/mock/README.md).
