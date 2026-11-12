@@ -1,6 +1,6 @@
 # Userscript manager and browser compatibility
 
-Status below is for `humble_fumble.user.js` v5.8.1. Read the "How this was tested" section before relying on any row marked untested.
+Status below is for `humble_fumble.user.js` v5.9.0. Read the "How this was tested" section before relying on any row marked untested.
 
 ## Summary
 
@@ -40,6 +40,7 @@ Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or a
 - 5.7.3 recognises plain unhyphenated key codes (12-40 uppercase letters and digits, as in Humble's current key buttons), and stops the row finder from counting the script's own checkbox, which produced a duplicate key on rescan.
 - 5.8.0 gives rows with the same derived name separate items (they were merged, so some files were never queued), rescans when the page changes, checks the size of each file written to a folder, and rejects empty or failed downloads and request timeouts.
 - 5.8.1 fixes PDF (and any second format) rows downloading the wrong file. A row's page data lists every format's signed URL; only the first (usually the CBZ) was recorded, so each other format's button was given that CBZ link. Each format now gets its own URL and `.torrent` links are ignored. Covered by `node test/fiber.test.js`.
+- 5.9.0 lets you press the download button with nothing selected and choose the formats in the confirmation modal; the button is renamed Download Selections. No API changes.
 
 ## APIs the script uses
 

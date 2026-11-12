@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.8.1. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.9.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -23,8 +23,8 @@ Updates: the script declares `@updateURL` and `@downloadURL` pointing at the raw
 ## Use
 
 1. Open a bundle's download page.
-2. Tick the checkbox next to each item, or open **Filter Types** to select whole formats (for example every EPUB and PDF).
-3. Click **Download Selected (N)**. A confirmation modal lists the formats and where they will go.
+2. Optionally tick the checkbox next to each item, or open **Filter Types** to select whole formats (for example every EPUB and PDF).
+3. Click **Download Selections (N)**. A confirmation modal lists the formats and where they will go. If nothing is selected, the modal lists every format found on the page, unchecked, and you tick the ones you want there.
 4. In Chrome/Edge, choose a base folder when asked (first time only; see below).
 5. Items already downloaded are skipped by default. Tick the force option in the modal to re-download them.
 
@@ -34,7 +34,7 @@ Toolbar controls:
 
 | Control | Purpose |
 |---|---|
-| Download Selected (N) | Open the confirmation modal and start the download |
+| Download Selections (N) | Open the confirmation modal and start the download |
 | Filter Types (N) | Select every item of chosen formats; **Show All Types** lists formats not on this page |
 | Set Base Folder | Pick or change the root folder (Chrome/Edge only; hidden elsewhere) |
 | Rescan Page | Re-detect items |

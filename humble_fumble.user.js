@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.8.1
+// @version      5.9.0
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -821,15 +821,18 @@
 
   function promptPreDownloadModal() {
     scanPageResources();
-    const candidates = getTargetResources();
+    // With nothing pre-selected, offer every detected type in the modal (all unchecked) and let the user pick there.
+    const preselected = getTargetResources();
+    const pickMode = preselected.length === 0;
+    const candidates = pickMode ? state.resources : preselected;
     if (candidates.length === 0) {
-      setStatusMessage('No resources selected. Check items or choose types from "Filter Types" first.', 'warn');
+      setStatusMessage('No downloadable items detected on this page. Try Rescan Page.', 'warn');
       return;
     }
     const counts = {};
     candidates.forEach((r) => { counts[r.typeOrExt] = (counts[r.typeOrExt] || 0) + 1; });
-    const doneCount = candidates.filter((r) => isResourceDownloaded(state.bundleId, r.id)).length;
-    const defaultCount = candidates.length - doneCount;
+    const doneCount = pickMode ? 0 : candidates.filter((r) => isResourceDownloaded(state.bundleId, r.id)).length;
+    const defaultCount = pickMode ? 0 : candidates.length - doneCount;
 
     document.getElementById('hb-dl-modal-backdrop')?.remove();
     const backdrop = document.createElement('div');
@@ -837,7 +840,7 @@
     backdrop.className = 'hb-dl-modal-backdrop';
 
     const chipsHtml = Object.entries(counts)
-      .map(([ext, c]) => '<label class="hb-dl-modal-type-chip"><input type="checkbox" class="hb-dl-confirm-ext-cb" value="' + escapeHtml(ext) + '" checked /><span><strong>' + escapeHtml(ext.toUpperCase()) + '</strong> (' + c + ')</span></label>')
+      .map(([ext, c]) => '<label class="hb-dl-modal-type-chip"><input type="checkbox" class="hb-dl-confirm-ext-cb" value="' + escapeHtml(ext) + '"' + (pickMode ? '' : ' checked') + ' /><span><strong>' + escapeHtml(ext.toUpperCase()) + '</strong> (' + c + ')</span></label>')
       .join('');
     const fsa = hasFsa();
     const rootName = !fsa ? 'Structured .ZIP archive (this browser has no folder picker)' : state.rootDirHandle ? state.rootDirHandle.name : 'Select on Start (one-time prompt)';
@@ -847,6 +850,7 @@
       '<div class="hb-dl-modal-folder-box"><div><div style="font-size:12px;">Base Folder: <strong style="color:#4ade80;">' + escapeHtml(rootName) + '</strong></div>' +
       '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Creates real subfolders: <code>' + escapeHtml(state.normalizedBundleName) + '/&lt;ext&gt;/&lt;filename&gt;</code></div></div>' +
       (fsa ? '<button type="button" id="hb-dl-modal-pick-btn" class="hb-dl-btn">Choose Base Folder</button>' : '') + '</div>' +
+      (pickMode ? '<div style="font-size:12px;color:#94a3b8;margin-top:8px;">Choose the types to download:</div>' : '') +
       '<div class="hb-dl-modal-type-grid">' + chipsHtml + '</div>' +
       '<div style="margin:10px 0;font-size:12px;"><div style="color:#94a3b8;font-size:11px;margin-bottom:5px;">Default behavior skips ' + doneCount + ' already-downloaded item(s).</div>' +
       '<label style="cursor:pointer;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="hb-dl-force-redownload-cb" />' +
@@ -860,7 +864,7 @@
     const getQueue = () => {
       const exts = new Set(Array.from(backdrop.querySelectorAll('.hb-dl-confirm-ext-cb:checked')).map((c) => c.value));
       const force = Boolean(backdrop.querySelector('#hb-dl-force-redownload-cb')?.checked);
-      return getTargetResources(exts).filter((r) => (force ? true : !isResourceDownloaded(state.bundleId, r.id)));
+      return (pickMode ? state.resources.filter((r) => exts.has(r.typeOrExt)) : getTargetResources(exts)).filter((r) => (force ? true : !isResourceDownloaded(state.bundleId, r.id)));
     };
 
     backdrop.querySelectorAll('input').forEach((inp) => inp.addEventListener('change', () => {
@@ -1045,7 +1049,7 @@
       '<span class="hb-dl-banner-text">Humble Bundle Downloader</span><span class="hb-dl-banner-hint" id="hb-dl-banner-hint">Click to expand download options</span></button>' +
       '<div id="hb-dl-body"><div class="hb-dl-top-row"><div class="hb-dl-brand"><span class="hb-dl-bundle-title" id="hb-dl-bundle-title-text">Humble Bundle Downloader</span>' +
       '<span class="hb-dl-folder-preview" id="hb-dl-folder-preview-text"></span><span class="hb-dl-page-badge hb-dl-page-badge-partial" id="hb-dl-page-complete-badge">0 / 0 Downloaded</span></div>' +
-      '<div class="hb-dl-controls"><div class="hb-dl-split-group"><button type="button" id="hb-dl-execute-btn" class="hb-dl-btn hb-dl-btn-primary">Download Selected (0)</button>' +
+      '<div class="hb-dl-controls"><div class="hb-dl-split-group"><button type="button" id="hb-dl-execute-btn" class="hb-dl-btn hb-dl-btn-primary">Download Selections (0)</button>' +
       '<button type="button" id="hb-dl-dropdown-toggle" class="hb-dl-btn hb-dl-btn-primary">Filter Types (0)</button><div id="hb-dl-type-dropdown" class="hb-dl-dropdown-menu"></div></div>' +
       '<button type="button" id="hb-dl-pick-root-dir-btn" class="hb-dl-btn">Set Base Folder</button><button type="button" id="hb-dl-rescan-btn" class="hb-dl-btn">Rescan Page</button>' +
       '<button type="button" id="hb-dl-clear-selection-btn" class="hb-dl-btn">Clear</button><button type="button" id="hb-dl-toggle-drawer-btn" class="hb-dl-btn">Resources &amp; Keys (0)</button></div></div>' +
@@ -1107,7 +1111,7 @@
     const execBtn = document.getElementById('hb-dl-execute-btn');
     const toggleBtn = document.getElementById('hb-dl-dropdown-toggle');
     const drawerBtn = document.getElementById('hb-dl-toggle-drawer-btn');
-    if (execBtn) { execBtn.textContent = state.isDownloading ? 'Downloading...' : 'Download Selected (' + getTargetResources().length + ')'; execBtn.disabled = state.isDownloading; }
+    if (execBtn) { execBtn.textContent = state.isDownloading ? 'Downloading...' : 'Download Selections (' + getTargetResources().length + ')'; execBtn.disabled = state.isDownloading; }
     if (toggleBtn) toggleBtn.textContent = 'Filter Types (' + state.selectedTypesDropdown.size + ')';
     if (drawerBtn) drawerBtn.textContent = 'Resources & Keys (' + state.resources.length + ')';
   }
