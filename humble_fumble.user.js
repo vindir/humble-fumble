@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.10.0
+// @version      5.10.1
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -563,7 +563,8 @@
   }
 
   function scanPageResources() {
-    if (!document.body) return;
+    // A running download owns state.bundleId/bundleName; the user may have navigated to another bundle meanwhile.
+    if (!document.body || state.isDownloading) return;
     const m = location.href.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
     state.bundleId = m ? m[1].toLowerCase() : 'humble_library';
     state.bundleName = KNOWN_BUNDLE_NAMES[state.bundleId] || (() => {
@@ -820,6 +821,7 @@
   }
 
   function promptPreDownloadModal() {
+    if (state.isDownloading) { setStatusMessage('A download of "' + state.bundleName + '" is still running. Wait for it to finish.', 'warn'); return; }
     scanPageResources();
     // With nothing pre-selected, offer every detected type in the modal (all unchecked) and let the user pick there.
     const preselected = getTargetResources();
@@ -949,10 +951,11 @@
     let next = 0, finished = 0;
     const failedNotes = [];
     // One summary line, redrawn at most every 250 ms, instead of every worker overwriting it with its own file's progress.
+    const runBundle = state.bundleName, runFolder = state.normalizedBundleName;
     let active = 0, retried = 0, bytesSaved = 0, drawTimer = null;
     const drawStatus = () => {
       drawTimer = null;
-      setStatusMessage('Downloading ' + finished + '/' + queue.length + ' \u00b7 ' + active + ' active \u00b7 ' + (bytesSaved / 1048576).toFixed(1) + ' MB saved' + (retried ? ' \u00b7 ' + retried + ' retried' : '') + (fail ? ' \u00b7 ' + fail + ' failed' : ''), fail ? 'warn' : 'info');
+      setStatusMessage('Downloading "' + runBundle + '" ' + finished + '/' + queue.length + ' \u00b7 ' + active + ' active \u00b7 ' + (bytesSaved / 1048576).toFixed(1) + ' MB saved' + (retried ? ' \u00b7 ' + retried + ' retried' : '') + (fail ? ' \u00b7 ' + fail + ' failed' : ''), fail ? 'warn' : 'info');
     };
     const scheduleDraw = () => { if (!drawTimer) drawTimer = setTimeout(drawStatus, 250); };
 
@@ -1019,10 +1022,11 @@
 
     clearTimeout(drawTimer);
     state.isDownloading = false;
+    scanPageResources(); // pick up the page the user is on now, if they navigated during the run
     updateExecuteButtonLabel();
     syncCheckboxesUI();
-    const target = rootDirHandle ? '"' + state.normalizedBundleName + '/<type>/" subfolders' : '"' + state.normalizedBundleName + '.zip" (' + zipPart + ' file' + (zipPart === 1 ? '' : 's') + ')';
-    setStatusMessage('Finished: ' + ok + ' saved into ' + target + (fail ? ' (' + fail + ' failed: ' + failedNotes.slice(0, 3).join('; ') + (failedNotes.length > 3 ? '; ...' : '') + ').' : '.'), fail ? 'warn' : 'success');
+    const target = rootDirHandle ? '"' + runFolder + '/<type>/" subfolders' : '"' + runFolder + '.zip" (' + zipPart + ' file' + (zipPart === 1 ? '' : 's') + ')';
+    setStatusMessage('Finished "' + runBundle + '": ' + ok + ' saved into ' + target + (fail ? ' (' + fail + ' failed: ' + failedNotes.slice(0, 3).join('; ') + (failedNotes.length > 3 ? '; ...' : '') + ').' : '.'), fail ? 'warn' : 'success');
   }
 
   function injectStyles() {

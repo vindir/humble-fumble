@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.10.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.10.1. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -43,7 +43,7 @@ Toolbar controls:
 
 The page is scanned on load, again about two seconds later, after back/forward navigation, and whenever the page changes and then stays quiet for about a second (rows that render late or get re-rendered are picked up this way). Click **Rescan Page** if something is still missing. Each row is its own item even if two rows would get the same name.
 
-Downloads run 5 at a time by default. Change **Simultaneous downloads** (1 to 10) in the confirmation modal; the value is saved. Each slot waits a randomized 1.2 to 2.2 seconds between its items. The status line shows one summary (`Downloading 12/42 · 5 active · 318 MB saved`), and a failed file is retried after 2 s, 4 s and 30 s before it counts as failed. Finding each item's download link and revealing keys still happens one item at a time, and in zip mode every in-flight file is held in memory, so a higher number uses more RAM and more load on Humble's hosts.
+Downloads run 5 at a time by default. Change **Simultaneous downloads** (1 to 10) in the confirmation modal; the value is saved. Each slot waits a randomized 1.2 to 2.2 seconds between its items. The status line shows one summary (`Downloading 12/42 · 5 active · 318 MB saved`), and a failed file is retried after 2 s, 4 s and 30 s before it counts as failed. A run stays attached to the bundle it started on if you navigate to another bundle meanwhile; the status line names that bundle, and the toolbar switches to the new page when the run ends. Finding each item's download link and revealing keys still happens one item at a time, and in zip mode every in-flight file is held in memory, so a higher number uses more RAM and more load on Humble's hosts.
 
 ## Where files go
 

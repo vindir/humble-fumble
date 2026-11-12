@@ -1,6 +1,6 @@
 # Userscript manager and browser compatibility
 
-Status below is for `humble_fumble.user.js` v5.10.0. Read the "How this was tested" section before relying on any row marked untested.
+Status below is for `humble_fumble.user.js` v5.10.1. Read the "How this was tested" section before relying on any row marked untested.
 
 ## Summary
 
@@ -43,6 +43,7 @@ Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or a
 - 5.9.0 lets you press the download button with nothing selected and choose the formats in the confirmation modal; the button is renamed Download Selections. No API changes.
 - 5.9.1 retries a failed file download twice (2 s, then 4 s apart) before counting it as failed, and the final status line names the failed items with the error. Added after a bundle where 5 files failed on the first run and all succeeded on retry; the error text was not captured. The user had several large uploads running at the same time, so timeouts from a saturated connection are the likely cause (not confirmed). Lower Simultaneous downloads on a busy connection.
 - 5.10.0 adds a third retry after 30 s (retries are now 2 s, 4 s, 30 s, so up to 4 attempts per file) and replaces the per-file progress line with one summary line (`Downloading 12/42 · 5 active · 318 MB saved`) redrawn at most every 250 ms. Per-file percentages are no longer shown. No API changes.
+- 5.10.1 keeps a running download tied to the bundle it started on. Humble navigates between bundles without a page reload, and the single toolbar used to re-read the bundle from the URL (Rescan Page, opening the download dialog) while a run was in flight. The status line now names the bundle (`Downloading "<bundle>" 12/42`, `Finished "<bundle>": ...`), rescans wait until the run ends, and starting a second run during one is refused. Reproduced only on the mock page; the original report was not captured.
 
 ## APIs the script uses
 
