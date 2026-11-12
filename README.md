@@ -2,7 +2,7 @@
 
 A userscript that adds a download toolbar to your Humble Bundle library. It collects the files (EPUB, PDF, MOBI, audio, game installers) and service keys (Steam, GOG, Manning, Kobo, and others) on a bundle page, then saves them into `Bundle Name/type/file` folders.
 
-Current version: 5.7.3. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
+Current version: 5.8.0. Primary target: [Violentmonkey](https://violentmonkey.github.io/). Chrome/Edge write straight into a folder you pick; Firefox and Safari get a `.zip` with the same folder layout. See [docs/compatibility.md](docs/compatibility.md) for what has and has not been tested.
 
 ## Install (Violentmonkey)
 
@@ -41,7 +41,7 @@ Toolbar controls:
 | Clear | Uncheck everything |
 | Resources & Keys (N) | Drawer listing discovered items with their target paths, and the saved keys |
 
-The page is scanned on load, again about two seconds later, and after back/forward navigation. It does not watch for page changes, so click **Rescan Page** after expanding sections or navigating inside the site.
+The page is scanned on load, again about two seconds later, after back/forward navigation, and whenever the page changes and then stays quiet for about a second (rows that render late or get re-rendered are picked up this way). Click **Rescan Page** if something is still missing. Each row is its own item even if two rows would get the same name.
 
 Downloads run 5 at a time by default. Change **Simultaneous downloads** (1 to 10) in the confirmation modal; the value is saved. Each slot waits a randomized 1.2 to 2.2 seconds between its items. Finding each item's download link and revealing keys still happens one item at a time, and in zip mode every in-flight file is held in memory, so a higher number uses more RAM and more load on Humble's hosts.
 
@@ -84,6 +84,7 @@ Download history is tracked per bundle, so the toolbar can show `N / M Downloade
 | "Could not resolve URL" in the console | Click the item's own download button once on the page, then **Rescan Page** and retry. |
 | Picker rejects the folder (macOS) | You chose `Downloads` or `Documents` itself. Make a subfolder inside it and pick that. |
 | Nothing saved after picking a folder | Re-pick the base folder; the browser may have revoked write permission. |
+| An item was skipped or shows as downloaded but the file is missing | Update to 5.8.0 or later. Earlier versions could merge rows that rendered before their titles into one item. Newer versions also check the written file size and fail the item on a mismatch or an empty download. Re-download with the force option. |
 | Status says "N failed" | Open the browser console and look for `[HB-DL] Failed item:` lines. |
 | Zip never appears (Firefox/Safari) | Allow downloads for `humblebundle.com` when the browser asks, and check that downloads are not blocked. |
 | Downloads fail or get throttled | Lower **Simultaneous downloads** in the confirmation modal. |

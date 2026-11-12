@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.7.3
+// @version      5.8.0
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -293,6 +293,9 @@
     const w = await fHandle.createWritable();
     await w.write(content);
     await w.close();
+    const expected = typeof content === 'string' ? new TextEncoder().encode(content).length : content.size;
+    const written = (await fHandle.getFile()).size;
+    if (written !== expected) throw new Error('Wrote ' + written + ' of ' + expected + ' bytes to ' + fileNameOnly);
   }
 
   // ZIP-BEGIN (fallback for browsers without showDirectoryPicker: Firefox, Safari)
@@ -536,6 +539,14 @@
   }
 
   function registerResource(res) {
+    // Two different rows that derive the same id must stay separate; merging them silently dropped items.
+    const baseId = res.id;
+    for (let n = 2, cur = state.resourceById.get(res.id); cur && res.domElement && cur.domElement && cur.domElement !== res.domElement; n++) {
+      res.id = baseId + '_' + n;
+      cur = state.resourceById.get(res.id);
+    }
+    const old = state.prevResourceById && state.prevResourceById.get(res.id);
+    if (old) { res.url = res.url || old.url; res.keyValue = res.keyValue || old.keyValue; }
     const ex = state.resourceById.get(res.id);
     if (ex) {
       ex.url = res.url || ex.url;
@@ -565,6 +576,11 @@
       return 'Humble_Bundle_' + state.bundleId.slice(0, 12);
     })();
     state.normalizedBundleName = normalizeForPath(state.bundleName, 'Humble_Bundle');
+
+    // Rebuild from the current page so rows that rendered without titles (or were re-rendered) do not linger as stale items.
+    state.prevResourceById = state.resourceById;
+    state.resourceById = new Map();
+    state.resources = [];
 
     const handledEls = new WeakSet();
     const handledRowExts = new WeakMap();
@@ -666,6 +682,8 @@
       injectInlineCheckbox(el, res);
     });
 
+    state.resources = Array.from(state.resourceById.values());
+    document.querySelectorAll('.hb-dl-inline-wrap').forEach((w) => { if (!state.resourceById.has(w.dataset.resourceId)) w.remove(); });
     refreshToolbarAndPanel();
     checkAndUpdatePageCompletionState();
   }
@@ -766,12 +784,14 @@
           url,
           responseType: 'blob',
           onprogress: (e) => { if (onProgress && e.lengthComputable && e.total > 0) onProgress(Math.round((e.loaded / e.total) * 100) + '%'); },
-          onload: (r) => (r.status >= 200 && r.status < 300 && r.response ? resolve(new Blob([r.response], { type: 'application/octet-stream' })) : reject(new Error('HTTP ' + r.status))),
+          onload: (r) => (r.status >= 200 && r.status < 300 && r.response && r.response.size !== 0 ? resolve(new Blob([r.response], { type: 'application/octet-stream' })) : reject(new Error('HTTP ' + r.status + ' or empty response'))),
           onerror: () => reject(new Error('Network error')),
+          ontimeout: () => reject(new Error('Timed out')),
+          onabort: () => reject(new Error('Aborted')),
         });
         return;
       }
-      fetch(url).then((r) => r.blob()).then((b) => new Blob([b], { type: 'application/octet-stream' })).then(resolve).catch(reject);
+      fetch(url).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }).then((b) => { if (b.size === 0) throw new Error('Empty response'); return new Blob([b], { type: 'application/octet-stream' }); }).then(resolve).catch(reject);
     });
   }
 
@@ -1189,6 +1209,17 @@
     });
   }
 
+  // Rows can render, gain titles, or be re-rendered after the first scan; rescan once the page goes quiet.
+  function watchForPageChanges() {
+    const ours = (n) => { const e = n.nodeType === 1 ? n : n.parentElement; return Boolean(e && e.closest && e.closest('#hb-dl-root-host, #hb-dl-modal-backdrop, .hb-dl-inline-wrap')); };
+    let timer = null;
+    new MutationObserver((muts) => {
+      if (muts.every((m) => ours(m.target) && Array.from(m.addedNodes).concat(Array.from(m.removedNodes)).every(ours))) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (!state.isDownloading) scanPageResources(); }, 1200);
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
   function initOnce() {
     installDirectInterceptors();
     whenPageSettled().then(() => {
@@ -1197,6 +1228,7 @@
       loadSavedDirHandle();
       scanPageResources();
       setTimeout(scanPageResources, 1800);
+      watchForPageChanges();
       window.addEventListener('popstate', () => setTimeout(scanPageResources, 800));
     });
   }

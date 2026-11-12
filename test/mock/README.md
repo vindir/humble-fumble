@@ -13,6 +13,8 @@ node test/mock/server.js        # http://localhost:8778/
 | `/zip-keys-reveal.html` | Four key rows: key appears after 1.5 s in an input, as text, as the button's own text, or never. Expect 3 saved and 1 failed, no placeholder keys. |
 | `/zip-keys-revealed.html` | Keys already revealed (hyphenated text, input value, and an unhyphenated code inside a button). All three must be detected once each and the type filter must list only `steam_key`. |
 | `/empty.html` | No items. The type filter must say none were detected instead of listing every format. |
+| `/grid-rows.html` | 42 rows in a layout like Humble's current library page. Expect 42 distinct items. |
+| `/grid-late-titles.html` | Same rows, but titles appear 10 s after load and one row is re-rendered at 14 s. Expect 42 placeholder items at first, then 42 correctly named ones with no stale checkboxes. |
 | `/hydration.html` | Server-rendered React 18 that hydrates 2.5 s after load. Needs internet for the React CDN. Open the console: there must be no `Minified React error #418` / `#423`. |
 | `/hydration-baseline.html` | Same page without the script, to confirm any error comes from the script. |
 

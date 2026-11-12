@@ -1,6 +1,6 @@
 # Userscript manager and browser compatibility
 
-Status below is for `humble_fumble.user.js` v5.7.3. Read the "How this was tested" section before relying on any row marked untested.
+Status below is for `humble_fumble.user.js` v5.8.0. Read the "How this was tested" section before relying on any row marked untested.
 
 ## Summary
 
@@ -37,6 +37,7 @@ Not done: running in real Firefox, real Safari, Tampermonkey, Greasemonkey, or a
 - 5.7.1 waits up to 10 s for a revealed key and fails the item instead of writing a `REVEALED_ON_PAGE` placeholder.
 - 5.7.2 detects keys that are already revealed (no Reveal button) and no longer fills the type filter with the whole catalog when a page has no detected items.
 - 5.7.3 recognises plain unhyphenated key codes (12-40 uppercase letters and digits, as in Humble's current key buttons), and stops the row finder from counting the script's own checkbox, which produced a duplicate key on rescan.
+- 5.8.0 gives rows with the same derived name separate items (they were merged, so some files were never queued), rescans when the page changes, checks the size of each file written to a folder, and rejects empty or failed downloads and request timeouts.
 
 ## APIs the script uses
 
