@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Humble Bundle Library Resource & Key Downloader
 // @namespace    https://www.humblebundle.com/violentmonkey/library-downloader
-// @version      5.10.1
+// @version      5.10.2
 // @description  Forces binary downloads of PDFs, eBooks, audio, games, and keys into real OS bundle/type subfolders without opening files in browser tabs.
 // @author       HumbleLibraryTools
 // @homepageURL  https://github.com/vindir/humble-fumble
@@ -64,8 +64,8 @@
   ];
 
   // Hyphenated keys (XXXXX-XXXXX-XXXXX) or plain 12-40 character codes that mix letters and digits, as in Humble's current key buttons.
-  const KEY_TOKEN_RX = /^(?:[A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40})$/;
-  const KEY_IN_TEXT_RX = /\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40})\b/;
+  const KEY_TOKEN_RX = /^(?:[A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40}|(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]{16,40})$/;
+  const KEY_IN_TEXT_RX = /\b([A-Z0-9]{4,7}(?:-[A-Z0-9]{4,7}){2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{12,40}|(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]{16,40})\b/;
   const isKeyToken = (t) => KEY_TOKEN_RX.test(String(t || '').trim());
 
   const ALL_CATALOG_TYPES = [...FILE_EXTENSIONS, ...SERVICE_KEY_TYPES.map((s) => s.id)];
@@ -686,6 +686,7 @@
 
     state.resources = Array.from(state.resourceById.values());
     document.querySelectorAll('.hb-dl-inline-wrap').forEach((w) => { if (!state.resourceById.has(w.dataset.resourceId)) w.remove(); });
+    adoptLegacyDownloads();
     refreshToolbarAndPanel();
     checkAndUpdatePageCompletionState();
   }
@@ -742,6 +743,23 @@
     updateExecuteButtonLabel();
   }
 
+  // Older versions sometimes recorded a row under its machine name (e.g. file_homefires_ebook_epub) instead of its title
+  // (file_Home_Fires_epub). Copy those records to the current id so existing downloads show their badge without re-downloading.
+  function adoptLegacyDownloads() {
+    const map = safeGet(STORAGE_KEYS.DOWNLOADED_MAP, {});
+    const done = map[state.bundleId];
+    if (!done) return;
+    let changed = false;
+    state.resources.forEach((res) => {
+      if (done[res.id] || !res.domElement) return;
+      const row = res.wrapperElement || findRowContainer(res.domElement);
+      const machine = ((row && row.innerText) || '').trim().split('\n')[0].trim();
+      if (!/^[a-z0-9_.-]+$/i.test(machine)) return;
+      const legacyId = (res.kind === 'key' ? 'key_' : 'file_') + normalizeForPath(machine) + '_' + res.typeOrExt;
+      if (legacyId !== res.id && done[legacyId]) { done[res.id] = done[legacyId]; changed = true; }
+    });
+    if (changed) { safeSet(STORAGE_KEYS.DOWNLOADED_MAP, map); syncCheckboxesUI(); }
+  }
   function checkAndUpdatePageCompletionState() {
     const total = state.resources.length;
     const doneCount = state.resources.filter((r) => isResourceDownloaded(state.bundleId, r.id)).length;

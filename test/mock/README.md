@@ -11,7 +11,7 @@ node test/mock/server.js        # http://localhost:8778/
 | `/zip-concurrency.html` | 8 files, no folder picker (zip mode). Peak simultaneous downloads and the zip handoff. |
 | `/zip-keys.html` | One file and one key row. Zip contents, Copy / Export JSON / Export CSV in the drawer. |
 | `/zip-keys-reveal.html` | Four key rows: key appears after 1.5 s in an input, as text, as the button's own text, or never. Expect 3 saved and 1 failed, no placeholder keys. |
-| `/zip-keys-revealed.html` | Keys already revealed (hyphenated text, input value, and an unhyphenated code inside a button). All three must be detected once each and the type filter must list only `steam_key`. |
+| `/zip-keys-revealed.html` | Keys already revealed (hyphenated text, input value, an unhyphenated code inside a button, and a mixed-case 16-character Manning-style code inside a button). All four must be detected once each; the type filter must list only `steam_key` and `manning_key`. |
 | `/empty.html` | No items. The type filter must say none were detected instead of listing every format. |
 | `/grid-rows.html` | 42 rows in a layout like Humble's current library page. Expect 42 distinct items. |
 | `/grid-late-titles.html` | Same rows, but titles appear 10 s after load and one row is re-rendered at 14 s. Expect 42 placeholder items at first, then 42 correctly named ones with no stale checkboxes. |
